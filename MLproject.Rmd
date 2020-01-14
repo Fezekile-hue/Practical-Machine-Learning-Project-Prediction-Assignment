@@ -1,0 +1,129 @@
+---
+title: 'Practical Machine Learning Project : Prediction Assignment'
+author: "Fezekile Mdluli"
+date: "14/01/2020"
+output: html_document
+---
+
+# 1. Background
+\
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. 
+\
+6 participants were asked to perform barbell lifts correctly and incorrectly in 5 different ways and the data was recorded by accelerometers on the belt, forearm, arm, and dumbell. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+\
+
+# 2. Objective
+\
+The main objective of this project is to predict the manner in which the participants did the exercise.
+\
+
+# 3. Loading and Cleaning the Data
+
+\
+```{r}
+# Loading required packages and setting the seed
+library(caret);library(e1071)
+library(randomForest);library(dplyr)
+library(ggplot2);library(corrplot)
+set.seed(1256)
+
+# Loading datasets
+train_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+test_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+# Reading dataset into R
+train_set <- read.csv(url(train_url))
+test_set <- read.csv(url(test_url))
+dim(is.na(train_set))
+```
+\
+A quick look at the dataset show that there are 160 variables, some of which are not required for the analysis and some have missing values(NA). The following steps are done to clean and prepare data
+
+- Columns with predominantly missing values are removed from training set
+- Near Zero variance variables are removed from training set
+- Variables that like X, user_name, raw_timestamp_part_1, raw_timestamp_part_2 and cvtd_timestamp are also removed as they do not make intuitive sence for prediction.
+- Training dataset is then partitioned to create a validation dataset that will be used to verify the model fit.
+
+\
+```{r}
+# remove variables with NA values
+train_set <- train_set[,which(unlist(lapply(train_set, function(x) !(mean(is.na(x))>0.9))))]
+
+# remove variables with nearly zero variance
+train_set <- train_set[, -(nearZeroVar(train_set))]
+
+# Removing Variables that like X, user_name, raw_timestamp_part_1, raw_timestamp_part_2 and cvtd_timestamp
+
+train_set<-train_set[,-(1:5)]
+
+# partition training set
+inTrain <- createDataPartition(y=train_set$classe, p=0.7, list=F)
+train_set <- train_set[inTrain, ]
+validation <- train_set[-inTrain, ]
+
+dim((train_set))
+dim((validation))
+
+# Visualize data and correlation between variables
+#correlations = cor(train_set)
+#corrplot(correlationss,type='upper',order ='hclust',tl.col='black',tl.str =45)
+
+
+```
+
+# 4. Prediction Modeling 
+\
+A random forest model was chosen evaluating the model with a grid search of 5 folders.
+\
+```{r}
+# Define the control
+trControl<-trainControl(method = "cv", number =5, search = "grid")
+
+# fit model on training set
+fit <- train(classe ~ ., data=train_set, method="rf",trControl= trControl)
+
+# printing final model to see tuning parameters it chose
+fit$finalModel
+```
+\
+The above results show that the model uses 500 trees and tried 27 variables at each split
+\
+
+# 5. Performance Evaluation
+\
+This session we look using the above model to predict the labels of the validation datasetand show the confusion matrix to compare the predicted versus the actual labels
+\
+
+```{r}
+pred<-predict(fit,newdata=validation)
+confusionMatrix(pred,validation$classe)
+```
+\
+Evaluating the model of the validation test data shows a 100% accurancy rate with an out sample error of 0%. This is a great prediction. Random forest model can be used to predict on the testing dataset. There is no need to try another model.
+\
+
+# 6. Predicting on Test data set
+\
+Now lets see how well the model performs on the Test data set and write data into different files
+\
+```{r}
+# predict on test set
+final_pred <- predict(fit, newdata=test_set)
+
+# convert predictions to character vector
+final_pred <- as.character(final_pred)
+
+# create function to write predictions to files
+pml_write_files <- function(x) {
+    n <- length(x)
+    for(i in 1:n) {
+        filename <- paste0("problem_id_", i, ".txt")
+        write.table(x[i], file=filename, quote=FALSE, row.names=F, col.names=FALSE)
+    }
+}
+
+# create prediction files to submit
+pml_write_files(final_pred)
+
+```
+
